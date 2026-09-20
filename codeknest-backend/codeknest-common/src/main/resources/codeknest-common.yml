@@ -1,0 +1,70 @@
+# ============================================
+# CodeLink 公共配置（server-web / server-admin 共享）
+# 由各 starter 通过 spring.config.import: classpath:codeknest-common.yml 引入
+# 注意：本文件优先级低于 starter 主配置，差异项在 starter 中覆盖
+# 敏感信息一律环境变量注入；变量清单与示例见根目录 .env.example（真实值存 .env，不入库）
+# ============================================
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:codeknest}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${DB_USER}
+    password: ${DB_PWD}
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PWD}
+      database: 0
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
+    # MongoDB（两 starter 共享：草稿/登录日志；admin 侧连接闲置，见阶段5 spec D4）
+    mongodb:
+      uri: mongodb://${MONGO_USER}:${MONGO_PWD}@${MONGO_HOST:localhost}:${MONGO_PORT:27017}/codeknest?authSource=admin
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PWD}
+    virtual-host: ${RABBITMQ_VHOST:/CodeLink}
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.codeknest.**.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+codeknest:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-expires: 7200
+    refresh-token-expires: 604800
+  upload:
+    local-path: ${UPLOAD_PATH:./data/uploads}
+    access-url-prefix: ${UPLOAD_URL_PREFIX:/api/files}
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn

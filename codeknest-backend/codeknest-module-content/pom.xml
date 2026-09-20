@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.codeknest</groupId>
+        <artifactId>codeknest-backend</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>codeknest-module-content</artifactId>
+    <name>CodeLink Module Content</name>
+    <description>内容域 — 文章（post）/ 评论（comment）/ 互动（interaction）（阶段6由 3 模块合并）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.codeknest</groupId>
+            <artifactId>codeknest-common</artifactId>
+        </dependency>
+        <!-- 依赖账号域（作者信息 / 通知） -->
+        <dependency>
+            <groupId>com.codeknest</groupId>
+            <artifactId>codeknest-module-account</artifactId>
+        </dependency>
+        <!-- 图片异步删除 / 文章同步 MQ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+        <!-- 草稿（MongoDB） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-mongodb</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

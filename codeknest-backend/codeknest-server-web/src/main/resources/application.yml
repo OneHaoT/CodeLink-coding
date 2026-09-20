@@ -1,0 +1,49 @@
+# ============================================
+# CodeLink Web 应用配置
+# 公共段（datasource / redis / rabbitmq / jackson / mybatis-plus / jwt / upload 公共部分）
+# 见 classpath:codeknest-common.yml（common-core），本文件仅保留 web 特有与差异项
+# 敏感信息一律环境变量注入，变量清单见根目录 .env.example
+# ============================================
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  config:
+    import: classpath:codeknest-common.yml
+  application:
+    name: codeknest-server-web
+  profiles:
+    active: dev
+  elasticsearch:
+    uris: ${ES_URI:http://localhost:9200}
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 20MB
+
+codeknest:
+  upload:
+    image-path: ${IMAGE_PATH:./image}
+
+knife4j:
+  setting:
+    doc-name: CodeLink API
+
+logging:
+  level:
+    root: INFO
+    com.codeknest: DEBUG
+    com.codeknest.module.account.auth: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

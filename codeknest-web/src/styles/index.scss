@@ -1,0 +1,69 @@
+@use './variables' as *;
+
+// --- Reset ---
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: $font-body;
+  font-size: $fs-base;
+  color: $ink;
+  background: $paper;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+}
+
+a {
+  color: $ink;
+  text-decoration: none;
+}
+img {
+  max-width: 100%;
+  display: block;
+}
+code,
+pre {
+  font-family: $font-mono;
+}
+
+::selection {
+  background: rgba($brand, 0.2);
+  color: $brand-hover;
+}
+
+// --- Element Plus 覆盖 ---
+.el-button {
+  font-weight: 600;
+  font-family: $font-body;
+  border-radius: $r-sm !important;
+  transition: all 0.18s ease;
+}
+.el-button--primary {
+  background: $brand !important;
+  border-color: $brand !important;
+  &:hover {
+    background: $brand-hover !important;
+    border-color: $brand-hover !important;
+    box-shadow: $sh-brand;
+  }
+}
+.el-input__wrapper,
+.el-textarea__inner {
+  border-radius: $r-sm !important;
+}
+
+// --- 工具类 ---
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}

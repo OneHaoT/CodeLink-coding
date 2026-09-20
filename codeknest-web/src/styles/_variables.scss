@@ -1,0 +1,94 @@
+// ================================================
+// CodeLink — Design Tokens v2 (Editorial Warm)
+// ================================================
+
+// --- 品牌色（暖底 + 靛蓝 + 琥珀） ---
+$ink: #1e293b; // 深墨 — 主文字
+$ink-2: #475569; // 次文字
+$ink-3: #94a3b8; // 辅助文字
+$ink-4: #cbd5e1; // 占位符
+
+$brand: #4f46e5; // 靛蓝 — 主色
+$brand-hover: #4338ca;
+$brand-soft: #eef2ff; // 极浅靛蓝
+
+$accent: #f59e0b; // 琥珀 — 强调/热度
+$accent-soft: #fef3c7;
+
+$success: #10b981;
+$warning: #f97316;
+$danger: #ef4444;
+
+// --- 背景 ---
+$paper: #fffbf7; // 暖白 — 主背景（微黄）
+$surface: #ffffff; // 卡片白底
+$surface-alt: #fff7ed; // 次级卡片（暖米）
+$border: #e2e8f0; // 边框
+$border-strong: #cbd5e1;
+$bg-code: #0f172a; // 代码块深色
+
+// --- 字体 ---
+$font-display: 'Space Grotesk', 'Oswald', '思源黑体', system-ui, sans-serif;
+$font-body:
+  'Source Han Sans SC',
+  '思源黑体',
+  -apple-system,
+  'PingFang SC',
+  'Microsoft YaHei',
+  sans-serif;
+$font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Menlo', Consolas, monospace;
+
+// --- 字号（13px 基数，紧凑但可读） ---
+$fs-xs: 12px;
+$fs-sm: 13px;
+$fs-md: 14px;
+$fs-base: 15px;
+$fs-lg: 16px;
+$fs-xl: 18px;
+$fs-2xl: 20px;
+$fs-3xl: 24px;
+$fs-4xl: 30px;
+$fs-5xl: 38px;
+
+// --- 间距（4px 基数） ---
+$s-1: 4px;
+$s-2: 8px;
+$s-3: 12px;
+$s-4: 16px;
+$s-5: 20px;
+$s-6: 24px;
+$s-7: 28px;
+$s-8: 32px;
+$s-9: 36px;
+$s-10: 40px;
+$s-12: 48px;
+$s-16: 64px;
+$s-20: 80px;
+
+// --- 圆角 ---
+$r-xs: 3px;
+$r-sm: 6px;
+$r-md: 10px;
+$r-lg: 14px;
+$r-xl: 20px;
+$r-full: 999px;
+
+// --- 阴影（三层：微/中/深） ---
+$sh-1:
+  0 1px 2px rgba(30, 41, 59, 0.06),
+  0 1px 1px rgba(30, 41, 59, 0.04);
+$sh-2:
+  0 4px 14px rgba(30, 41, 59, 0.08),
+  0 2px 4px rgba(30, 41, 59, 0.04);
+$sh-3:
+  0 12px 32px rgba(30, 41, 59, 0.12),
+  0 4px 8px rgba(30, 41, 59, 0.06);
+$sh-brand: 0 4px 16px rgba(79, 70, 229, 0.35);
+
+// --- Element Plus 主题覆盖 ---
+$el-color-primary: $brand;
+$el-color-primary-light-3: $brand-hover;
+$el-color-primary-light-5: lighten($brand, 25%);
+$el-color-primary-light-7: lighten($brand, 40%);
+$el-color-primary-light-9: lighten($brand, 55%);
+$el-color-primary-dark-2: darken($brand, 12%);
