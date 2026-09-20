@@ -12,8 +12,12 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "codeknest.jwt")
 public class JwtProperties {
 
-    /** 签名密钥（至少 256 bits 对应 HS256） */
-    private String secret = "change-me-in-prod-at-least-256-bits-long-key-here-12345";
+    /**
+     * 签名密钥（HS256 要求至少 256 位，即 32 个字符）。
+     * <p>由环境变量 {@code JWT_SECRET} 提供；未配置时由
+     * {@code JwtSecretBootstrapPostProcessor} 自动生成并落盘复用，故此处不设默认值。
+     */
+    private String secret;
 
     /** accessToken 有效期（秒），默认 2 小时 */
     private long accessTokenExpires = 7200;

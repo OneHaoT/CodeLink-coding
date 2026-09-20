@@ -5,6 +5,8 @@
 #   META-INF/spring/*.imports 只对自动配置生效，对 EnvironmentPostProcessor 无效）
 # ============================================
 
-# 部署自举：MySQL 库不存在时自动创建（幂等，已存在则跳过）
+# 部署自举 1：MySQL 库不存在时自动创建（幂等，已存在则跳过）
+# 部署自举 2：JWT 签名密钥未配置时自动生成并落盘复用
 org.springframework.boot.env.EnvironmentPostProcessor=\
-com.codeknest.common.init.DatabaseBootstrapPostProcessor
+com.codeknest.common.init.DatabaseBootstrapPostProcessor,\
+com.codeknest.common.init.JwtSecretBootstrapPostProcessor
