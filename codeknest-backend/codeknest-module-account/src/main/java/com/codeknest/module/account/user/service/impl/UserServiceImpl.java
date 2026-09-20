@@ -6,6 +6,9 @@ import com.codeknest.common.core.BusinessException;
 import com.codeknest.common.core.ErrorCode;
 import com.codeknest.module.account.auth.entity.User;
 import com.codeknest.module.account.auth.mapper.UserMapper;
+import com.codeknest.module.account.event.UserActions;
+import com.codeknest.module.account.event.UserEventMessage;
+import com.codeknest.module.account.event.UserEventPublisher;
 import com.codeknest.module.account.user.dto.UpdateProfileDTO;
 import com.codeknest.module.account.user.entity.UserFollow;
 import com.codeknest.module.account.user.entity.UserProfile;
@@ -33,6 +36,7 @@ public class UserServiceImpl implements UserService {
     private final UserProfileMapper profileMapper;
     private final UserFollowMapper followMapper;
     private final NotificationService notificationService;
+    private final UserEventPublisher eventPublisher;
 
     @Override
     public UserHomeVO getUserHome(Long userId, Long currentUserId) {
@@ -135,6 +139,10 @@ public class UserServiceImpl implements UserService {
                 .setSql("following_count = following_count + 1"));
         notificationService.notify(followingId, NotificationService.NEW_FOLLOWER,
                 followerId, null, null, null, "关注了你");
+        eventPublisher.publish(UserEventMessage
+                .of(UserActions.FOLLOW, followerId, null)
+                .target(UserActions.TARGET_USER, followingId)
+                .targetUsername(target.getUsername()));
         return getOrCreateProfile(followingId).getFollowersCount();
     }
 
@@ -151,6 +159,11 @@ public class UserServiceImpl implements UserService {
             profileMapper.update(null, new LambdaUpdateWrapper<UserProfile>()
                     .eq(UserProfile::getUserId, followerId)
                     .setSql("following_count = GREATEST(following_count - 1, 0)"));
+            User target = userMapper.selectById(followingId);
+            eventPublisher.publish(UserEventMessage
+                    .of(UserActions.UNFOLLOW, followerId, null)
+                    .target(UserActions.TARGET_USER, followingId)
+                    .targetUsername(target == null ? null : target.getUsername()));
         }
         UserProfile p = profileMapper.selectById(followingId);
         return p != null && p.getFollowersCount() != null ? p.getFollowersCount() : 0;

@@ -11,9 +11,11 @@ import com.codeknest.module.account.auth.dto.RegisterDTO;
 import com.codeknest.module.account.auth.entity.User;
 import com.codeknest.module.account.auth.mapper.UserMapper;
 import com.codeknest.module.account.auth.service.AuthService;
-import com.codeknest.module.account.auth.service.LoginLogService;
 import com.codeknest.module.account.auth.vo.LoginVO;
 import com.codeknest.module.account.auth.vo.RegisterVO;
+import com.codeknest.module.account.event.UserActions;
+import com.codeknest.module.account.event.UserEventMessage;
+import com.codeknest.module.account.event.UserEventPublisher;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +40,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtUtils jwtUtils;
     private final JwtProperties jwtProperties;
     private final StringRedisTemplate redis;
-    private final LoginLogService loginLogService;
+    private final UserEventPublisher eventPublisher;
 
     private static final String REFRESH_TOKEN_BLACKLIST_KEY = "blacklist:refresh_token:%d";
 
@@ -72,6 +74,9 @@ public class AuthServiceImpl implements AuthService {
         userMapper.insert(user);
 
         log.info("User registered: id={}, username={}", user.getId(), user.getUsername());
+        eventPublisher.publish(UserEventMessage
+                .of(UserActions.REGISTER, user.getId(), user.getUsername())
+                .target(UserActions.TARGET_USER, user.getId()));
         return RegisterVO.builder()
                 .userId(user.getId())
                 .email(user.getEmail())
@@ -89,23 +94,23 @@ public class AuthServiceImpl implements AuthService {
                 .eq(User::getEmail, account)
         );
         if (user == null) {
-            loginLogService.record(null, account, false, "账号不存在");
+            recordLogin(null, account, false, "账号不存在");
             throw new BusinessException(ErrorCode.LOGIN_FAIL);
         }
         // 2. 校验密码
         if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
-            loginLogService.record(user.getId(), account, false, "密码错误");
+            recordLogin(user.getId(), account, false, "密码错误");
             throw new BusinessException(ErrorCode.LOGIN_FAIL);
         }
         // 3. 检查状态
         if (user.getStatus() != null && user.getStatus() != 1) {
-            loginLogService.record(user.getId(), account, false, "账号已被禁用");
+            recordLogin(user.getId(), account, false, "账号已被禁用");
             throw new BusinessException(ErrorCode.FORBIDDEN, "账号已被禁用");
         }
         // 4. 更新最后登录时间
         user.setLastLoginAt(LocalDateTime.now());
         userMapper.updateById(user);
-        loginLogService.record(user.getId(), account, true, null);
+        recordLogin(user.getId(), account, true, null);
         // 5. 签发 Token
         return buildLoginResponse(user);
     }
@@ -134,13 +139,8 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public void logout(Long userId) {
-        // 将当前用户的 refreshToken 加入黑名单（V1 按 userId 拉黑）
-        redis.opsForValue().set(
-                String.format(REFRESH_TOKEN_BLACKLIST_KEY, userId),
-                "1",
-                jwtProperties.getRefreshTokenExpires(),
-                TimeUnit.SECONDS
-        );
+        blacklistRefreshToken(userId);
+        eventPublisher.publish(UserEventMessage.of(UserActions.LOGOUT, userId, null));
     }
 
     @Override
@@ -154,7 +154,25 @@ public class AuthServiceImpl implements AuthService {
         }
         user.setPassword(passwordEncoder.encode(dto.getNewPassword()));
         userMapper.updateById(user);
-        logout(userId);
+        // 改密后拉黑旧 refreshToken（不等同于登出，不产生登出日志）
+        blacklistRefreshToken(userId);
+    }
+
+    /** 将用户的 refreshToken 加入黑名单（V1 按 userId 拉黑） */
+    private void blacklistRefreshToken(Long userId) {
+        redis.opsForValue().set(
+                String.format(REFRESH_TOKEN_BLACKLIST_KEY, userId),
+                "1",
+                jwtProperties.getRefreshTokenExpires(),
+                TimeUnit.SECONDS
+        );
+    }
+
+    /** 登录成功/失败统一记录（异步，失败不影响登录主流程） */
+    private void recordLogin(Long userId, String account, boolean success, String failReason) {
+        eventPublisher.publish(UserEventMessage
+                .of(success ? UserActions.LOGIN_SUCCESS : UserActions.LOGIN_FAIL, userId, account)
+                .result(success, failReason));
     }
 
     private LoginVO buildLoginResponse(User user) {

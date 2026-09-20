@@ -26,6 +26,9 @@ import com.codeknest.module.content.post.vo.PostVO;
 import com.codeknest.module.account.user.entity.UserProfile;
 import com.codeknest.module.account.user.mapper.UserProfileMapper;
 import com.codeknest.module.account.user.service.UserService;
+import com.codeknest.module.account.event.UserActions;
+import com.codeknest.module.account.event.UserEventMessage;
+import com.codeknest.module.account.event.UserEventPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,6 +90,8 @@ class PostServiceImplTest {
     @Mock
     private PostCacheService postCacheService;
     @Mock
+    private UserEventPublisher eventPublisher;
+    @Mock
     private ObjectProvider<PostInteractionQuery> interactionQueryProvider;
     @Mock
     private PostInteractionQuery interactionQuery;
@@ -99,7 +104,7 @@ class PostServiceImplTest {
     void setUp() {
         postService = new PostServiceImpl(postMapper, tagMapper, categoryMapper, postTagMapper,
                 draftMongoRepository, userMapper, profileMapper, userService, imageStorageService,
-                postSyncProducer, sensitiveWordChecker, postCacheService, objectMapper,
+                postSyncProducer, sensitiveWordChecker, postCacheService, eventPublisher, objectMapper,
                 interactionQueryProvider);
     }
 
@@ -205,6 +210,17 @@ class PostServiceImplTest {
         verify(postCacheService).evictHotAll();
         // 无临时图片迁移时不应重复 update
         verify(postMapper, never()).updateById(any(Post.class));
+
+        // 发布事件（驱动 MongoDB 动态流 + 操作日志两份投影）
+        ArgumentCaptor<UserEventMessage> eventCaptor =
+                ArgumentCaptor.forClass(UserEventMessage.class);
+        verify(eventPublisher).publish(eventCaptor.capture());
+        UserEventMessage event = eventCaptor.getValue();
+        assertThat(event.getAction()).isEqualTo(UserActions.POST_PUBLISH);
+        assertThat(event.getUserId()).isEqualTo(AUTHOR_ID);
+        assertThat(event.getTargetId()).isEqualTo(POST_ID);
+        assertThat(event.getPostTitle()).isEqualTo("我的第一篇文章");
+        assertThat(event.getEventId()).isNotBlank();
     }
 
     // ==================== 编辑文章 ====================

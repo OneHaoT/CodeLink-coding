@@ -135,6 +135,24 @@ export interface SimpleUser {
   avatar?: string
 }
 
+/** 用户动态（MongoDB user_activity 集合，MySQL 的读侧投影） */
+export interface UserActivityVO {
+  id: string
+  userId: number
+  actorUsername?: string
+  actorAvatar?: string
+  action: string
+  targetType?: string
+  targetId?: number
+  postId?: number
+  postTitle?: string
+  postSummary?: string
+  postCoverImage?: string
+  commentExcerpt?: string
+  targetUsername?: string
+  createdAt: string
+}
+
 export interface NotificationVO {
   id: number
   type: string

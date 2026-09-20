@@ -9,6 +9,9 @@ import com.codeknest.common.mybatis.PageVO;
 import com.codeknest.common.security.SecurityContext;
 import com.codeknest.module.account.auth.entity.User;
 import com.codeknest.module.account.auth.mapper.UserMapper;
+import com.codeknest.module.account.event.UserActions;
+import com.codeknest.module.account.event.UserEventMessage;
+import com.codeknest.module.account.event.UserEventPublisher;
 import com.codeknest.module.content.post.cache.PostCacheService;
 import com.codeknest.module.content.post.dto.PostQueryDTO;
 import com.codeknest.module.content.post.dto.SaveDraftDTO;
@@ -64,6 +67,7 @@ public class PostServiceImpl implements PostService {
     private final PostSyncProducer postSyncProducer;
     private final SensitiveWordChecker sensitiveWordChecker;
     private final PostCacheService postCacheService;
+    private final UserEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     /** 互动模块 SPI（可选 Bean） */
     private final ObjectProvider<PostInteractionQuery> interactionQueryProvider;
@@ -200,6 +204,10 @@ public class PostServiceImpl implements PostService {
                 .eq(UserProfile::getUserId, userId).setSql("posts_count = posts_count + 1"));
         postSyncProducer.send(post.getId());
         postCacheService.evictHotAll();
+        eventPublisher.publish(UserEventMessage
+                .of(UserActions.POST_PUBLISH, userId, null)
+                .target(UserActions.TARGET_POST, post.getId())
+                .postSnapshot(post.getId(), post.getTitle(), post.getSummary(), post.getCoverImage()));
         return post.getId();
     }
 
@@ -259,6 +267,10 @@ public class PostServiceImpl implements PostService {
         postSyncProducer.send(id);
         postCacheService.evictDetail(id);
         postCacheService.evictHotAll();
+        eventPublisher.publish(UserEventMessage
+                .of(UserActions.POST_DELETE, userId, null)
+                .target(UserActions.TARGET_POST, id)
+                .postSnapshot(id, post.getTitle(), post.getSummary(), post.getCoverImage()));
     }
 
     // ==================== 草稿（MongoDB） ====================

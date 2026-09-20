@@ -2,13 +2,13 @@ import { http } from './request'
 import type {
   AuditLog,
   AuditLogQuery,
-  LoginLog,
-  LoginLogQuery,
   Notice,
   NoticePayload,
   PageResult,
   SensitiveWord,
   SensitiveWordQuery,
+  UserActionLog,
+  UserActionLogQuery,
 } from './types'
 
 // ---------- 敏感词 ----------
@@ -35,10 +35,10 @@ export function getAuditLogs(params: AuditLogQuery) {
   return http.get<PageResult<AuditLog>>('/admin/audit-logs', { params })
 }
 
-// ---------- 登录日志（MongoDB） ----------
+// ---------- 操作日志（MongoDB） ----------
 
-export function getLoginLogs(params: LoginLogQuery) {
-  return http.get<PageResult<LoginLog>>('/admin/login-logs', { params })
+export function getActionLogs(params: UserActionLogQuery) {
+  return http.get<PageResult<UserActionLog>>('/admin/action-logs', { params })
 }
 
 // ---------- 公告 ----------

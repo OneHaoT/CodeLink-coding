@@ -11,6 +11,7 @@ import type {
   SavePostPayload,
   SimpleUser,
   Tag,
+  UserActivityVO,
   UserHomeVO,
 } from './types'
 
@@ -136,6 +137,14 @@ export const userApi = {
     return http.post<{ url: string }>('/users/me/avatar', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
+  },
+  /** 某用户的动态（公开） */
+  activities(id: number | string, params: { page?: number; size?: number } = {}) {
+    return http.get<PageResult<UserActivityVO>>(`/users/${id}/activities`, { params })
+  },
+  /** 关注流：我 + 我关注的人的动态（需登录） */
+  followingActivities(params: { page?: number; size?: number } = {}) {
+    return http.get<PageResult<UserActivityVO>>('/activities/following', { params })
   },
 }
 

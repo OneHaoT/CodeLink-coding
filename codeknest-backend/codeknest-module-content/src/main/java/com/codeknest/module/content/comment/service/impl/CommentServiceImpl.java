@@ -5,83 +5,67 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.codeknest.common.core.BusinessException;
 import com.codeknest.common.core.ErrorCode;
 import com.codeknest.common.security.SecurityContext;
-import com.codeknest.module.account.auth.entity.User;
-import com.codeknest.module.account.auth.mapper.UserMapper;
+import com.codeknest.module.account.event.UserActions;
+import com.codeknest.module.account.event.UserEventMessage;
+import com.codeknest.module.account.event.UserEventPublisher;
+import com.codeknest.module.account.message.service.NotificationService;
 import com.codeknest.module.content.comment.dto.CreateCommentDTO;
 import com.codeknest.module.content.comment.entity.Comment;
+import com.codeknest.module.content.comment.entity.CommentDocument;
 import com.codeknest.module.content.comment.entity.CommentLike;
 import com.codeknest.module.content.comment.mapper.CommentLikeMapper;
 import com.codeknest.module.content.comment.mapper.CommentMapper;
+import com.codeknest.module.content.comment.mq.CommentSyncProducer;
+import com.codeknest.module.content.comment.repository.CommentMongoRepository;
+import com.codeknest.module.content.comment.service.CommentReadCopyService;
 import com.codeknest.module.content.comment.service.CommentService;
 import com.codeknest.module.content.comment.vo.CommentVO;
-import com.codeknest.module.account.message.service.NotificationService;
 import com.codeknest.module.content.post.entity.Post;
 import com.codeknest.module.content.post.mapper.PostMapper;
 import com.codeknest.module.content.post.support.SensitiveWordChecker;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class CommentServiceImpl implements CommentService {
 
     private final CommentMapper commentMapper;
     private final CommentLikeMapper likeMapper;
     private final PostMapper postMapper;
-    private final UserMapper userMapper;
     private final NotificationService notificationService;
     private final SensitiveWordChecker sensitiveWordChecker;
+    private final CommentReadCopyService commentReadCopyService;
+    private final CommentMongoRepository commentMongoRepository;
+    private final CommentSyncProducer commentSyncProducer;
+    private final UserEventPublisher eventPublisher;
 
+    /**
+     * 文章评论树。
+     * 读路径前置：先读 MongoDB 读副本（一次查询直接出结果），未命中回源 MySQL 并异步回填，
+     * MongoDB 不可用时同样回源 MySQL —— 副本只是关口，不能成为功能依赖。
+     */
     @Override
     public List<CommentVO> listByPost(Long postId, Long currentUserId) {
-        List<Comment> comments = commentMapper.selectList(new LambdaQueryWrapper<Comment>()
-                .eq(Comment::getPostId, postId)
-                .eq(Comment::getStatus, 1)
-                .orderByAsc(Comment::getCreatedAt)
-                .orderByAsc(Comment::getId));
-        if (comments.isEmpty()) return Collections.emptyList();
-
-        Set<Long> userIds = new HashSet<>();
-        comments.forEach(c -> {
-            userIds.add(c.getUserId());
-            if (c.getReplyToUserId() != null) userIds.add(c.getReplyToUserId());
-        });
-        Map<Long, User> userMap = userMapper.selectBatchIds(userIds).stream()
-                .collect(Collectors.toMap(User::getId, u -> u));
-
-        // 当前用户的点赞集合
-        Set<Long> likedIds = new HashSet<>();
-        if (currentUserId != null) {
-            likedIds = likeMapper.selectList(new LambdaQueryWrapper<CommentLike>()
-                            .eq(CommentLike::getUserId, currentUserId)
-                            .in(CommentLike::getCommentId, comments.stream().map(Comment::getId).toList()))
-                    .stream().map(CommentLike::getCommentId).collect(Collectors.toSet());
+        List<CommentDocument> cached = readCopy(postId);
+        if (cached != null && !cached.isEmpty()) {
+            return assembleTree(cached, currentUserId);
         }
 
-        Map<Long, CommentVO> voMap = new LinkedHashMap<>();
-        for (Comment c : comments) {
-            voMap.put(c.getId(), toVO(c, userMap, likedIds));
+        List<CommentDocument> fresh = commentReadCopyService.buildFromMysql(postId);
+        if (fresh.isEmpty()) {
+            return Collections.emptyList();
         }
-
-        List<CommentVO> roots = new ArrayList<>();
-        for (Comment c : comments) {
-            CommentVO vo = voMap.get(c.getId());
-            if (c.getParentId() == null) {
-                roots.add(vo);
-            } else {
-                CommentVO parent = voMap.get(c.getParentId());
-                if (parent != null) {
-                    parent.getReplies().add(vo);
-                } else {
-                    roots.add(vo); // 父评论被删时兜底
-                }
-            }
+        if (cached != null) {
+            // 仅真正的「未命中」才补建副本；MongoDB 不可用时补建消息会被消费者反复重投，故跳过
+            commentSyncProducer.send(postId);
         }
-        return roots;
+        return assembleTree(fresh, currentUserId);
     }
 
     @Override
@@ -116,8 +100,7 @@ public class CommentServiceImpl implements CommentService {
                 .setSql("comment_count = comment_count + 1"));
 
         // 通知
-        String excerpt = comment.getContent();
-        if (excerpt.length() > 50) excerpt = excerpt.substring(0, 50);
+        String excerpt = excerpt(comment.getContent());
         if (comment.getParentId() == null) {
             notificationService.notify(post.getUserId(), NotificationService.COMMENT_POST,
                     userId, post.getId(), comment.getId(), null,
@@ -127,6 +110,14 @@ public class CommentServiceImpl implements CommentService {
                     userId, post.getId(), comment.getId(), null,
                     "回复了你的评论：" + excerpt);
         }
+
+        // 读副本同步 + 用户事件（均异步，失败不影响评论主流程）
+        commentSyncProducer.send(post.getId());
+        eventPublisher.publish(UserEventMessage
+                .of(UserActions.COMMENT_CREATE, userId, null)
+                .target(UserActions.TARGET_COMMENT, comment.getId())
+                .postSnapshot(post.getId(), post.getTitle(), post.getSummary(), post.getCoverImage())
+                .commentExcerpt(excerpt));
         return comment.getId();
     }
 
@@ -145,6 +136,12 @@ public class CommentServiceImpl implements CommentService {
         postMapper.update(null, new LambdaUpdateWrapper<Post>()
                 .eq(Post::getId, comment.getPostId())
                 .setSql("comment_count = GREATEST(comment_count - 1, 0)"));
+
+        commentSyncProducer.send(comment.getPostId());
+        eventPublisher.publish(UserEventMessage
+                .of(UserActions.COMMENT_DELETE, userId, null)
+                .target(UserActions.TARGET_COMMENT, commentId)
+                .commentExcerpt(excerpt(comment.getContent())));
     }
 
     @Override
@@ -164,19 +161,21 @@ public class CommentServiceImpl implements CommentService {
                 .eq(Comment::getId, commentId).setSql("like_count = like_count + 1"));
         notificationService.notify(comment.getUserId(), NotificationService.LIKE_COMMENT,
                 userId, comment.getPostId(), commentId, null, "赞了你的评论");
+        commentSyncProducer.send(comment.getPostId());
         return (comment.getLikeCount() == null ? 0 : comment.getLikeCount()) + 1;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int unlike(Long userId, Long commentId) {
-        requireComment(commentId);
+        Comment comment = requireComment(commentId);
         int deleted = likeMapper.delete(new LambdaQueryWrapper<CommentLike>()
                 .eq(CommentLike::getUserId, userId).eq(CommentLike::getCommentId, commentId));
         if (deleted > 0) {
             commentMapper.update(null, new LambdaUpdateWrapper<Comment>()
                     .eq(Comment::getId, commentId)
                     .setSql("like_count = GREATEST(like_count - 1, 0)"));
+            commentSyncProducer.send(comment.getPostId());
         }
         Comment c = commentMapper.selectById(commentId);
         return c != null && c.getLikeCount() != null ? c.getLikeCount() : 0;
@@ -192,27 +191,63 @@ public class CommentServiceImpl implements CommentService {
         return comment;
     }
 
-    private CommentVO toVO(Comment c, Map<Long, User> userMap, Set<Long> likedIds) {
-        CommentVO vo = new CommentVO();
-        vo.setId(c.getId());
-        vo.setPostId(c.getPostId());
-        vo.setParentId(c.getParentId());
-        vo.setUserId(c.getUserId());
-        vo.setContent(c.getContent());
-        vo.setLikeCount(c.getLikeCount() == null ? 0 : c.getLikeCount());
-        vo.setIsLiked(likedIds.contains(c.getId()));
-        vo.setCreatedAt(c.getCreatedAt());
+    private String excerpt(String content) {
+        if (content == null) {
+            return null;
+        }
+        return content.length() > 50 ? content.substring(0, 50) : content;
+    }
 
-        User u = userMap.get(c.getUserId());
-        if (u != null) {
-            vo.setUsername(u.getUsername());
-            vo.setUserAvatar(u.getAvatar());
+    /** 读 MongoDB 读副本；不可用时返回 null（与「未命中返回空列表」区分）交由回源逻辑兜底 */
+    private List<CommentDocument> readCopy(Long postId) {
+        try {
+            return commentMongoRepository.findByPostId(postId);
+        } catch (Exception e) {
+            log.warn("读取评论读副本失败，回源 MySQL，postId={}", postId, e);
+            return null;
         }
-        if (c.getReplyToUserId() != null) {
-            vo.setReplyToUserId(c.getReplyToUserId());
-            User replyTo = userMap.get(c.getReplyToUserId());
-            if (replyTo != null) vo.setReplyToUsername(replyTo.getUsername());
+    }
+
+    /** 由读副本文档拼装二级评论树（副本与回源共用同一套拼装逻辑） */
+    private List<CommentVO> assembleTree(List<CommentDocument> docs, Long currentUserId) {
+        List<CommentDocument> sorted = new ArrayList<>(docs);
+        sorted.sort(Comparator
+                .comparing(CommentDocument::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(d -> d.getId() == null ? 0L : Long.parseLong(d.getId())));
+
+        Map<Long, CommentVO> voMap = new LinkedHashMap<>();
+        for (CommentDocument d : sorted) {
+            CommentVO vo = new CommentVO();
+            vo.setId(Long.valueOf(d.getId()));
+            vo.setPostId(d.getPostId());
+            vo.setParentId(d.getParentId());
+            vo.setUserId(d.getUserId());
+            vo.setUsername(d.getUsername());
+            vo.setUserAvatar(d.getUserAvatar());
+            vo.setReplyToUserId(d.getReplyToUserId());
+            vo.setReplyToUsername(d.getReplyToUsername());
+            vo.setContent(d.getContent());
+            vo.setLikeCount(d.getLikeCount() == null ? 0 : d.getLikeCount());
+            vo.setIsLiked(currentUserId != null && d.getLikedUserIds() != null
+                    && d.getLikedUserIds().contains(currentUserId));
+            vo.setCreatedAt(d.getCreatedAt());
+            voMap.put(vo.getId(), vo);
         }
-        return vo;
+
+        List<CommentVO> roots = new ArrayList<>();
+        for (CommentDocument d : sorted) {
+            CommentVO vo = voMap.get(Long.valueOf(d.getId()));
+            if (d.getParentId() == null) {
+                roots.add(vo);
+            } else {
+                CommentVO parent = voMap.get(d.getParentId());
+                if (parent != null) {
+                    parent.getReplies().add(vo);
+                } else {
+                    roots.add(vo); // 父评论被删时兜底
+                }
+            }
+        }
+        return roots;
     }
 }

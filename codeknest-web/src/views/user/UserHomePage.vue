@@ -3,7 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { postApi, userApi } from '@/api/post'
-import type { PostVO, SimpleUser, UserHomeVO } from '@/api/types'
+import type { PostVO, SimpleUser, UserActivityVO, UserHomeVO } from '@/api/types'
+import { activityRoute, activityText } from '@/utils/activity'
 import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
@@ -12,9 +13,10 @@ const userStore = useUserStore()
 
 const user = ref<UserHomeVO | null>(null)
 const posts = ref<PostVO[]>([])
+const activities = ref<UserActivityVO[]>([])
 const followers = ref<SimpleUser[]>([])
 const following = ref<SimpleUser[]>([])
-const activeTab = ref<'posts' | 'followers' | 'following'>('posts')
+const activeTab = ref<'posts' | 'activities' | 'followers' | 'following'>('posts')
 const loading = ref(false)
 
 const userId = computed(() => Number(route.params.id))
@@ -30,6 +32,16 @@ async function loadPosts() {
   try {
     const res = await postApi.list({ userId: userId.value, size: 50 })
     posts.value = res.data.items || []
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadActivities() {
+  loading.value = true
+  try {
+    const res = await userApi.activities(userId.value, { size: 30 })
+    activities.value = res.data.items || []
   } finally {
     loading.value = false
   }
@@ -60,16 +72,28 @@ async function toggleFollow() {
 
 watch(activeTab, (t) => {
   if (t === 'posts' && !posts.value.length) loadPosts()
-  if (t !== 'posts' && !followers.value.length && !following.value.length) loadFollow()
+  if (t === 'activities' && !activities.value.length) loadActivities()
+  if (
+    (t === 'followers' || t === 'following') &&
+    !followers.value.length &&
+    !following.value.length
+  )
+    loadFollow()
 })
 watch(userId, async () => {
   activeTab.value = 'posts'
   posts.value = []
+  activities.value = []
   followers.value = []
   following.value = []
   await loadUser()
   await loadPosts()
 })
+
+function openActivity(a: UserActivityVO) {
+  const to = activityRoute(a)
+  if (to) router.push(to)
+}
 
 function time(t?: string) {
   return t ? dayjs(t).fromNow() : ''
@@ -114,6 +138,13 @@ onMounted(async () => {
         <div class="uh-stats">
           <button class="stat" :class="{ on: activeTab === 'posts' }" @click="activeTab = 'posts'">
             <b>{{ user.postsCount }}</b> 文章
+          </button>
+          <button
+            class="stat"
+            :class="{ on: activeTab === 'activities' }"
+            @click="activeTab = 'activities'"
+          >
+            动态
           </button>
           <button
             class="stat"
@@ -170,6 +201,27 @@ onMounted(async () => {
           </div>
         </article>
         <el-empty v-if="!loading && !posts.length" description="TA 还没有发布文章" />
+      </div>
+
+      <!-- 动态 -->
+      <div v-else-if="activeTab === 'activities'" class="act-list">
+        <div
+          v-for="a in activities"
+          :key="a.id"
+          class="act-item"
+          :class="{ linkable: !!activityRoute(a) }"
+          @click="openActivity(a)"
+        >
+          <span class="act-dot" />
+          <div class="act-body">
+            <p class="act-text">{{ activityText(a) }}</p>
+            <p v-if="a.postSummary && a.action !== 'COMMENT_CREATE'" class="act-summary">
+              {{ a.postSummary }}
+            </p>
+            <span class="act-time">{{ time(a.createdAt) }}</span>
+          </div>
+        </div>
+        <el-empty v-if="!loading && !activities.length" description="TA 还没有动态" />
       </div>
 
       <!-- 粉丝 / 关注 -->
@@ -334,6 +386,64 @@ onMounted(async () => {
       align-items: center;
       gap: 3px;
     }
+  }
+}
+
+.act-list {
+  background: $surface;
+  border: 1px solid $border;
+  border-radius: $r-md;
+  padding: $s-2 $s-5;
+}
+
+.act-item {
+  display: flex;
+  gap: $s-3;
+  padding: $s-4 0;
+  border-bottom: 1px solid $border;
+
+  &:last-child {
+    border-bottom: none;
+  }
+  &.linkable {
+    cursor: pointer;
+    &:hover .act-text {
+      color: $brand;
+    }
+  }
+
+  .act-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: $brand;
+    flex-shrink: 0;
+    margin-top: 7px;
+  }
+  .act-body {
+    flex: 1;
+    min-width: 0;
+  }
+  .act-text {
+    margin: 0 0 $s-1;
+    font-size: $fs-md;
+    color: $ink;
+    line-height: 1.6;
+    transition: color 0.15s;
+  }
+  .act-summary {
+    margin: 0 0 $s-1;
+    font-size: $fs-sm;
+    color: $ink-3;
+    line-height: 1.6;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .act-time {
+    font-size: $fs-xs;
+    color: $ink-3;
   }
 }
 

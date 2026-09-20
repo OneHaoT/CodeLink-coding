@@ -9,14 +9,17 @@ import com.codeknest.module.account.auth.dto.PasswordChangeDTO;
 import com.codeknest.module.account.auth.dto.RegisterDTO;
 import com.codeknest.module.account.auth.entity.User;
 import com.codeknest.module.account.auth.mapper.UserMapper;
-import com.codeknest.module.account.auth.service.LoginLogService;
 import com.codeknest.module.account.auth.vo.LoginVO;
 import com.codeknest.module.account.auth.vo.RegisterVO;
+import com.codeknest.module.account.event.UserActions;
+import com.codeknest.module.account.event.UserEventMessage;
+import com.codeknest.module.account.event.UserEventPublisher;
 import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -53,7 +56,7 @@ class AuthServiceImplTest {
     @Mock
     private ValueOperations<String, String> valueOps;
     @Mock
-    private LoginLogService loginLogService;
+    private UserEventPublisher eventPublisher;
 
     private JwtProperties jwtProperties;
     private AuthServiceImpl authService;
@@ -62,7 +65,14 @@ class AuthServiceImplTest {
     void setUp() {
         jwtProperties = new JwtProperties();
         authService = new AuthServiceImpl(userMapper, passwordEncoder, jwtUtils, jwtProperties,
-                redis, loginLogService);
+                redis, eventPublisher);
+    }
+
+    /** 抓取本次发布的事件（登录日志已泛化为统一用户事件） */
+    private UserEventMessage captureEvent() {
+        ArgumentCaptor<UserEventMessage> captor = ArgumentCaptor.forClass(UserEventMessage.class);
+        verify(eventPublisher).publish(captor.capture());
+        return captor.getValue();
     }
 
     private User activeUser() {
@@ -98,6 +108,13 @@ class AuthServiceImplTest {
         assertThat(vo.getUsername()).isEqualTo("newuser");
         assertThat(vo.getEmail()).isNull();
         verify(userMapper).insert(any(User.class));
+
+        UserEventMessage event = captureEvent();
+        assertThat(event.getAction()).isEqualTo(UserActions.REGISTER);
+        assertThat(event.getUserId()).isEqualTo(100L);
+        assertThat(event.getAccount()).isEqualTo("newuser");
+        assertThat(event.getTargetType()).isEqualTo(UserActions.TARGET_USER);
+        assertThat(event.getEventId()).isNotBlank();
     }
 
     @Test
@@ -158,7 +175,13 @@ class AuthServiceImplTest {
         assertThat(vo.getUser().getRole()).isEqualTo("ROLE_USER");
         assertThat(user.getLastLoginAt()).isNotNull();
         verify(userMapper).updateById(user);
-        verify(loginLogService).record(5L, "admin", true, null);
+
+        UserEventMessage event = captureEvent();
+        assertThat(event.getAction()).isEqualTo(UserActions.LOGIN_SUCCESS);
+        assertThat(event.getUserId()).isEqualTo(5L);
+        assertThat(event.getAccount()).isEqualTo("admin");
+        assertThat(event.getSuccess()).isTrue();
+        assertThat(event.getFailReason()).isNull();
     }
 
     @Test
@@ -176,8 +199,13 @@ class AuthServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode())
                         .isEqualTo(ErrorCode.LOGIN_FAIL.getCode()));
-        verify(loginLogService).record(5L, "admin", false, "密码错误");
         verify(userMapper, never()).updateById(any(User.class));
+
+        UserEventMessage event = captureEvent();
+        assertThat(event.getAction()).isEqualTo(UserActions.LOGIN_FAIL);
+        assertThat(event.getUserId()).isEqualTo(5L);
+        assertThat(event.getSuccess()).isFalse();
+        assertThat(event.getFailReason()).isEqualTo("密码错误");
     }
 
     @Test
@@ -193,8 +221,13 @@ class AuthServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode())
                         .isEqualTo(ErrorCode.LOGIN_FAIL.getCode()));
-        verify(loginLogService).record(null, "ghost", false, "账号不存在");
         verify(jwtUtils, never()).generateAccessToken(anyLong(), anyString(), anyString());
+
+        UserEventMessage event = captureEvent();
+        assertThat(event.getAction()).isEqualTo(UserActions.LOGIN_FAIL);
+        assertThat(event.getUserId()).isNull();
+        assertThat(event.getAccount()).isEqualTo("ghost");
+        assertThat(event.getFailReason()).isEqualTo("账号不存在");
     }
 
     // ==================== 刷新 Token ====================

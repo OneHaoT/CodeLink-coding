@@ -9,6 +9,9 @@ import com.codeknest.module.content.interaction.entity.PostLike;
 import com.codeknest.module.content.interaction.mapper.PostFavoriteMapper;
 import com.codeknest.module.content.interaction.mapper.PostLikeMapper;
 import com.codeknest.module.content.interaction.service.InteractionService;
+import com.codeknest.module.account.event.UserActions;
+import com.codeknest.module.account.event.UserEventMessage;
+import com.codeknest.module.account.event.UserEventPublisher;
 import com.codeknest.module.account.message.service.NotificationService;
 import com.codeknest.module.content.post.entity.Post;
 import com.codeknest.module.content.post.mapper.PostMapper;
@@ -29,6 +32,7 @@ public class InteractionServiceImpl implements InteractionService {
     private final PostMapper postMapper;
     private final PostService postService;
     private final NotificationService notificationService;
+    private final UserEventPublisher eventPublisher;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -47,6 +51,10 @@ public class InteractionServiceImpl implements InteractionService {
                 .eq(Post::getId, postId).setSql("like_count = like_count + 1"));
         notificationService.notify(post.getUserId(), NotificationService.LIKE_POST,
                 userId, postId, null, null, "赞了你的文章《" + post.getTitle() + "》");
+        eventPublisher.publish(UserEventMessage
+                .of(UserActions.POST_LIKE, userId, null)
+                .target(UserActions.TARGET_POST, postId)
+                .postSnapshot(postId, post.getTitle(), post.getSummary(), post.getCoverImage()));
         return (post.getLikeCount() == null ? 0 : post.getLikeCount()) + 1;
     }
 
@@ -84,6 +92,10 @@ public class InteractionServiceImpl implements InteractionService {
         favoriteMapper.insert(fav);
         postMapper.update(null, new LambdaUpdateWrapper<Post>()
                 .eq(Post::getId, postId).setSql("favorite_count = favorite_count + 1"));
+        eventPublisher.publish(UserEventMessage
+                .of(UserActions.POST_FAVORITE, userId, null)
+                .target(UserActions.TARGET_POST, postId)
+                .postSnapshot(postId, post.getTitle(), post.getSummary(), post.getCoverImage()));
         return (post.getFavoriteCount() == null ? 0 : post.getFavoriteCount()) + 1;
     }
 

@@ -19,10 +19,15 @@
             <groupId>com.codeknest</groupId>
             <artifactId>codeknest-common</artifactId>
         </dependency>
-        <!-- 登录日志（MongoDB） -->
+        <!-- 操作日志 / 用户动态（MongoDB 读侧投影） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-mongodb</artifactId>
+        </dependency>
+        <!-- 用户事件发布（登录/登出/注册/关注 → 统一事件通道） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

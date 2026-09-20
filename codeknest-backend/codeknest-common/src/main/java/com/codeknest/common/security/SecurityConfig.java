@@ -54,6 +54,7 @@ public class SecurityConfig {
             "/users/*",
             "/users/*/followers",
             "/users/*/following",
+            "/users/*/activities",
             "/users/*/follow/status",
             "/comments",
             "/search/**",

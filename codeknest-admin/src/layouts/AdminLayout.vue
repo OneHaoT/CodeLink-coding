@@ -19,7 +19,7 @@ const menus = [
   { path: '/notices', icon: 'Bell', title: '公告管理' },
   { path: '/sensitive-words', icon: 'WarnTriangleFilled', title: '敏感词管理' },
   { path: '/audit-logs', icon: 'List', title: '审计日志' },
-  { path: '/login-logs', icon: 'Key', title: '登录日志' },
+  { path: '/action-logs', icon: 'Key', title: '操作日志' },
 ]
 
 const activeMenu = computed(() => route.path)

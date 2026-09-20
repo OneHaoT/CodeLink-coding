@@ -2,11 +2,15 @@
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
-import { metaApi, noticeApi, postApi } from '@/api/post'
-import type { Category, Notice, PostVO } from '@/api/types'
+import { metaApi, noticeApi, postApi, userApi } from '@/api/post'
+import type { Category, Notice, PostVO, UserActivityVO } from '@/api/types'
+import { activityRoute, activityText } from '@/utils/activity'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 interface FeedCard {
   id: number
@@ -66,7 +70,9 @@ async function loadNotices() {
   }
 }
 
-const activeTab = ref<'recommend' | 'latest' | 'hot'>('recommend')
+const activeTab = ref<'recommend' | 'latest' | 'hot' | 'following'>('recommend')
+const activities = ref<UserActivityVO[]>([])
+const loadingFollow = ref(false)
 const leftCollapsed = ref(false)
 const categoryList = ref<Category[]>([])
 const activeCatId = ref<number | null>(null)
@@ -141,7 +147,35 @@ async function loadHotRank() {
   }))
 }
 
-watch([activeTab, activeCatId], () => loadFeed(true))
+/** 关注流：来自 MongoDB user_activity 投影（我 + 我关注的人），未命中不阻塞其它 tab */
+async function loadFollowFeed() {
+  if (loadingFollow.value) return
+  loadingFollow.value = true
+  try {
+    const res = await userApi.followingActivities({ page: 1, size: 20 })
+    activities.value = res.data.items || []
+  } finally {
+    loadingFollow.value = false
+  }
+}
+
+watch([activeTab, activeCatId], () => {
+  if (activeTab.value === 'following') loadFollowFeed()
+  else loadFeed(true)
+})
+
+function selectTab(k: 'recommend' | 'latest' | 'hot' | 'following') {
+  if (k === 'following' && !userStore.isLoggedIn()) {
+    ElMessage.warning('登录后即可查看关注流')
+    return
+  }
+  activeTab.value = k
+}
+
+function openActivity(a: UserActivityVO) {
+  const to = activityRoute(a)
+  if (to) router.push(to)
+}
 
 function loadMore() {
   if (page.value < totalPages.value) {
@@ -205,18 +239,45 @@ loadNotices()
               { k: 'recommend', label: '推荐' },
               { k: 'latest', label: '最新' },
               { k: 'hot', label: '热门' },
+              { k: 'following', label: '关注' },
             ]"
             :key="t.k"
             class="tab-btn"
             :class="{ on: activeTab === t.k }"
-            @click="activeTab = t.k as any"
+            @click="selectTab(t.k as 'recommend' | 'latest' | 'hot' | 'following')"
           >
             {{ t.label }}
           </button>
         </div>
 
+        <!-- 关注流（MongoDB 用户动态投影） -->
+        <div v-if="activeTab === 'following'" v-loading="loadingFollow" class="act-feed">
+          <div
+            v-for="a in activities"
+            :key="a.id"
+            class="act-card"
+            :class="{ linkable: !!activityRoute(a) }"
+            @click="openActivity(a)"
+          >
+            <el-avatar :size="28" :src="a.actorAvatar || undefined" class="act-avatar">
+              {{ (a.actorUsername || '?')[0] }}
+            </el-avatar>
+            <div class="act-main">
+              <p class="act-line">
+                <span class="act-name">{{ a.actorUsername }}</span>
+                {{ activityText(a) }}
+              </p>
+              <span class="act-time">{{ formatTime(a.createdAt) }}</span>
+            </div>
+          </div>
+          <el-empty
+            v-if="!loadingFollow && !activities.length"
+            description="还没有动态，先去关注几个人吧"
+          />
+        </div>
+
         <!-- 文章流 -->
-        <div class="feed">
+        <div v-else class="feed">
           <article
             v-for="post in feedPosts"
             :key="post.id"
@@ -263,13 +324,13 @@ loadNotices()
         </div>
 
         <div
-          v-if="!feedPosts.length && !loading"
+          v-if="activeTab !== 'following' && !feedPosts.length && !loading"
           class="load-more"
           style="color: var(--el-text-color-secondary)"
         >
           还没有文章，去发布第一篇吧
         </div>
-        <div class="load-more">
+        <div v-if="activeTab !== 'following'" class="load-more">
           <el-button v-if="page < totalPages" :loading="loading" @click="loadMore"
             >加载更多</el-button
           >
@@ -778,6 +839,57 @@ loadNotices()
   text-align: center;
   margin-top: $s-6;
   padding-bottom: $s-8;
+}
+
+// --- 关注流（用户动态） ---
+.act-feed {
+  display: flex;
+  flex-direction: column;
+  gap: $s-3;
+  min-height: 120px;
+}
+
+.act-card {
+  display: flex;
+  align-items: flex-start;
+  gap: $s-3;
+  padding: $s-4 $s-5;
+  background: $surface;
+  border: 1px solid $border;
+  border-radius: $r-md;
+  transition: all 0.15s;
+
+  &.linkable {
+    cursor: pointer;
+    &:hover {
+      border-color: $brand;
+      box-shadow: $sh-2;
+    }
+  }
+
+  .act-avatar {
+    flex-shrink: 0;
+  }
+  .act-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .act-line {
+    margin: 0 0 $s-1;
+    font-size: $fs-md;
+    color: $ink-2;
+    line-height: 1.6;
+
+    .act-name {
+      font-weight: 600;
+      color: $ink;
+      margin-right: 4px;
+    }
+  }
+  .act-time {
+    font-size: $fs-xs;
+    color: $ink-3;
+  }
 }
 
 // ============ 右栏 ============

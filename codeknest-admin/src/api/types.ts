@@ -169,23 +169,32 @@ export interface AuditLog {
   createdAt: string
 }
 
-/** 登录日志（MongoDB login_log 集合，id 为 ObjectId 字符串） */
-export interface LoginLog {
+/** 操作日志（MongoDB user_action_log 集合，id 为生产者生成的 eventId） */
+export interface UserActionLog {
   id: string
   userId: number | null
-  account: string
-  success: boolean
-  failReason: string | null
+  account: string | null
+  action: string
+  targetType: string | null
+  targetId: number | null
+  detail: string | null
+  /** 仅登录类事件有值；其余动作为空（后端不返回该字段） */
+  success?: boolean | null
+  failReason?: string | null
   ip: string | null
   userAgent: string | null
   createdAt: string
 }
 
-export interface LoginLogQuery {
+export interface UserActionLogQuery {
   page?: number
   size?: number
+  action?: string
   account?: string
-  success?: boolean
+  userId?: number
+  /** ISO 日期 yyyy-MM-dd */
+  start?: string
+  end?: string
 }
 
 export interface AuditLogQuery {
