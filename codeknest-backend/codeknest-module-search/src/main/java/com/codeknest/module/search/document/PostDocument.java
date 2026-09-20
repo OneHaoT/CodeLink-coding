@@ -6,6 +6,8 @@ import org.springframework.data.elasticsearch.annotations.DateFormat;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
+import org.springframework.data.elasticsearch.annotations.InnerField;
+import org.springframework.data.elasticsearch.annotations.MultiField;
 
 import java.time.Instant;
 import java.util.List;
@@ -45,7 +47,16 @@ public class PostDocument {
     @Field(type = FieldType.Keyword)
     private String categoryName;
 
-    @Field(type = FieldType.Keyword)
+    /**
+     * 文章标签 — 多字段：
+     * <ul>
+     *   <li>主字段 Keyword：原样保留，用于展示与精确匹配（term 过滤）；</li>
+     *   <li>子字段 {@code tags.text}：IK 分词（英文自动小写，如 Java→java），参与全文检索。</li>
+     * </ul>
+     */
+    @MultiField(mainField = @Field(type = FieldType.Keyword),
+            otherFields = @InnerField(suffix = "text", type = FieldType.Text,
+                    analyzer = "ik_max_word", searchAnalyzer = "ik_smart"))
     private List<String> tags;
 
     @Field(type = FieldType.Integer)

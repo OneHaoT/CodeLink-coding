@@ -74,7 +74,8 @@ public class SearchServiceImpl implements SearchService {
         NativeQueryBuilder builder = NativeQuery.builder()
                 .withQuery(b -> b.multiMatch(m -> m
                         .query(keyword)
-                        .fields("title^3", "summary^2", "content")
+                        // tags.text 为标签的分词子字段，使「按标签搜索」与标题/摘要/正文一致生效
+                        .fields("title^3", "summary^2", "content", "tags.text^2")
                         .type(TextQueryType.MostFields)))
                 .withPageable(PageRequest.of(pageNo - 1, pageSize))
                 .withHighlightQuery(highlightQuery);
