@@ -8,6 +8,7 @@ import com.codeknest.common.mybatis.PageVO;
 import com.codeknest.module.content.post.entity.Post;
 import com.codeknest.module.content.post.mapper.PostMapper;
 import com.codeknest.module.search.document.PostDocument;
+import com.codeknest.module.search.hotword.service.HotwordService;
 import com.codeknest.module.search.service.SearchService;
 import com.codeknest.module.search.support.PostDocumentBuilder;
 import com.codeknest.module.search.vo.SearchVO;
@@ -24,18 +25,14 @@ import org.springframework.data.elasticsearch.core.query.HighlightQuery;
 import org.springframework.data.elasticsearch.core.query.highlight.Highlight;
 import org.springframework.data.elasticsearch.core.query.highlight.HighlightField;
 import org.springframework.data.elasticsearch.core.query.highlight.HighlightParameters;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * 检索服务实现 — 基于 Spring Data Elasticsearch（IK 分词 + 服务端高亮）
@@ -46,12 +43,11 @@ import java.util.Set;
 public class SearchServiceImpl implements SearchService {
 
     private static final int MAX_PAGE_SIZE = 50;
-    private static final String HOTWORDS_KEY = "search:hotwords";
 
     private final ElasticsearchOperations operations;
     private final PostMapper postMapper;
     private final PostDocumentBuilder documentBuilder;
-    private final StringRedisTemplate redis;
+    private final HotwordService hotwordService;
 
     @Override
     public PageVO<SearchVO> search(String q, Integer page, Integer size, String sort) {
@@ -98,16 +94,13 @@ public class SearchServiceImpl implements SearchService {
 
     @Override
     public List<String> hotwords(int topN) {
-        ZSetOperations<String, String> zSet = redis.opsForZSet();
-        Set<String> words = zSet.reverseRange(HOTWORDS_KEY, 0, Math.max(topN - 1, 0));
-        return words == null ? List.of() : List.copyOf(words);
+        return hotwordService.topN(topN);
     }
 
-    /** 有效搜索记入热词排行（ZINCRBY，滚动 1 天过期）；失败只留日志不影响搜索 */
+    /** 有效搜索记入热词排行（Redis 累加增量，定时批量落库；失败只留日志不影响搜索） */
     private void recordHotword(String keyword) {
         try {
-            redis.opsForZSet().incrementScore(HOTWORDS_KEY, keyword, 1);
-            redis.expire(HOTWORDS_KEY, Duration.ofDays(1));
+            hotwordService.record(keyword);
         } catch (Exception e) {
             log.warn("搜索热词记录失败，keyword={}", keyword, e);
         }

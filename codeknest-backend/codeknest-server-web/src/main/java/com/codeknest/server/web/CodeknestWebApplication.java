@@ -19,7 +19,8 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
         "com.codeknest.module.content.post.mapper",
         "com.codeknest.module.content.comment.mapper",
         "com.codeknest.module.content.interaction.mapper",
-        "com.codeknest.module.account.message.mapper"
+        "com.codeknest.module.account.message.mapper",
+        "com.codeknest.module.search.hotword.mapper"
 })
 @EnableMongoRepositories(basePackages = {
         "com.codeknest.module.account.actionlog.repository",

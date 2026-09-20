@@ -42,6 +42,7 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -385,7 +386,7 @@ class PostServiceImplTest {
                 .title("缓存文章")
                 .author(PostVO.Author.builder().id(2L).username("hot-author").build())
                 .build();
-        when(postCacheService.getDetail(POST_ID)).thenReturn(cached);
+        when(postCacheService.loadDetail(eq(POST_ID), any())).thenReturn(cached);
         when(interactionQueryProvider.getIfAvailable()).thenReturn(interactionQuery);
         when(interactionQuery.isLiked(5L, POST_ID)).thenReturn(true);
         when(userService.isFollowing(5L, 2L)).thenReturn(true);
@@ -401,8 +402,8 @@ class PostServiceImplTest {
     }
 
     @Test
-    @DisplayName("详情缓存未命中 — 查库组装后写入公共副本缓存（个性化字段清零）")
-    void detail_cacheMiss_putsPublicCopy() {
+    @DisplayName("详情缓存未命中 — 回源组装出「公共副本」（个性化字段清零）")
+    void detail_cacheMiss_loadsPublicCopy() {
         Post post = new Post();
         post.setId(POST_ID);
         post.setUserId(2L);
@@ -418,16 +419,40 @@ class PostServiceImplTest {
         when(interactionQuery.isLiked(5L, POST_ID)).thenReturn(true);
         when(interactionQuery.isFavorited(5L, POST_ID)).thenReturn(true);
 
+        // 缓存服务由 PostCacheServiceTest 覆盖，这里只验证「回源装配 + 登录态补齐」的职责划分
+        PostVO[] loaded = new PostVO[1];
+        when(postCacheService.loadDetail(eq(POST_ID), any())).thenAnswer(inv -> {
+            Supplier<PostVO> loader = inv.getArgument(1, Supplier.class);
+            PostVO produced = loader.get();
+            loaded[0] = objectMapper.convertValue(produced, PostVO.class);
+            return objectMapper.convertValue(produced, PostVO.class);
+        });
+
         PostVO vo = postService.detail(POST_ID, 5L);
 
+        // 交给缓存的公共副本：个性化字段一律清零
+        assertThat(loaded[0].getIsLiked()).isFalse();
+        assertThat(loaded[0].getIsFavorited()).isFalse();
+        assertThat(loaded[0].getIsFollowingAuthor()).isFalse();
+        assertThat(loaded[0].getTitle()).isEqualTo("新文章");
+        // 返回给调用方的对象按登录态补齐
         assertThat(vo.getIsLiked()).isTrue();
         assertThat(vo.getIsFavorited()).isTrue();
-        ArgumentCaptor<PostVO> captor = ArgumentCaptor.forClass(PostVO.class);
-        verify(postCacheService).putDetail(eq(POST_ID), captor.capture());
-        assertThat(captor.getValue().getIsLiked()).isFalse();
-        assertThat(captor.getValue().getIsFavorited()).isFalse();
-        assertThat(captor.getValue().getIsFollowingAuthor()).isFalse();
-        assertThat(captor.getValue().getTitle()).isEqualTo("新文章");
+    }
+
+    @Test
+    @DisplayName("文章不存在 — 回源得到空值，抛 POST_NOT_FOUND（由缓存写空值哨兵防穿透）")
+    void detail_notFound_throws() {
+        when(postMapper.selectById(POST_ID)).thenReturn(null);
+        when(postCacheService.loadDetail(eq(POST_ID), any())).thenAnswer(inv -> {
+            Supplier<PostVO> loader = inv.getArgument(1, Supplier.class);
+            return loader.get();
+        });
+
+        assertThatThrownBy(() -> postService.detail(POST_ID, 5L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode())
+                        .isEqualTo(ErrorCode.POST_NOT_FOUND.getCode()));
     }
 
     private com.codeknest.module.account.auth.entity.User hotAuthor() {

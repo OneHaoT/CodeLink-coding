@@ -279,7 +279,23 @@ CREATE TABLE IF NOT EXISTS t_sensitive_word (
 ) ENGINE=InnoDB COMMENT='敏感词表';
 
 -- ============================================
--- 8. 社区公告
+-- 8. 搜索热词（权威源，Redis 仅做增量与读加速）
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS t_search_hotword (
+    id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    keyword          VARCHAR(64)     NOT NULL                COMMENT '搜索关键词（唯一）',
+    search_count     BIGINT UNSIGNED NOT NULL DEFAULT 0      COMMENT '累计被搜索次数',
+    last_searched_at DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近一次被搜索时间',
+    created_at       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_keyword (keyword),
+    INDEX idx_count (search_count DESC, last_searched_at DESC)
+) ENGINE=InnoDB COMMENT='搜索热词统计表';
+
+-- ============================================
+-- 9. 社区公告
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS t_notice (

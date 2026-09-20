@@ -3,6 +3,7 @@ package com.codeknest.module.search.service.impl;
 import com.codeknest.module.content.post.entity.Post;
 import com.codeknest.module.content.post.mapper.PostMapper;
 import com.codeknest.module.search.document.PostDocument;
+import com.codeknest.module.search.hotword.service.HotwordService;
 import com.codeknest.module.search.support.PostDocumentBuilder;
 import com.codeknest.module.search.vo.SearchVO;
 import com.codeknest.common.mybatis.PageVO;
@@ -17,14 +18,10 @@ import org.springframework.data.elasticsearch.core.IndexOperations;
 import org.springframework.data.elasticsearch.core.SearchHit;
 import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.data.elasticsearch.core.query.Query;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ZSetOperations;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -32,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -54,15 +52,13 @@ class SearchServiceImplTest {
     @Mock
     private PostDocumentBuilder documentBuilder;
     @Mock
-    private StringRedisTemplate redis;
-    @Mock
-    private ZSetOperations<String, String> zSetOps;
+    private HotwordService hotwordService;
 
     private SearchServiceImpl searchService;
 
     @BeforeEach
     void setUp() {
-        searchService = new SearchServiceImpl(operations, postMapper, documentBuilder, redis);
+        searchService = new SearchServiceImpl(operations, postMapper, documentBuilder, hotwordService);
     }
 
     private Post publishedPost() {
@@ -104,7 +100,7 @@ class SearchServiceImplTest {
         assertThat(vo.getTotalPages()).isZero();
         assertThat(vo.getPage()).isEqualTo(1);
         assertThat(vo.getSize()).isEqualTo(10);
-        verifyNoInteractions(operations, redis);
+        verifyNoInteractions(operations, hotwordService);
     }
 
     @Test
@@ -128,7 +124,6 @@ class SearchServiceImplTest {
         when(hits.getTotalHits()).thenReturn(1L);
         when(hits.getSearchHits()).thenReturn(List.of(hit));
         when(operations.search(any(Query.class), eq(PostDocument.class))).thenReturn(hits);
-        when(redis.opsForZSet()).thenReturn(zSetOps);
 
         PageVO<SearchVO> vo = searchService.search("java", 1, 10, "relevance");
 
@@ -143,19 +138,18 @@ class SearchServiceImplTest {
         assertThat(item.getAuthor().getUsername()).isEqualTo("admin");
         assertThat(item.getTags()).containsExactly("Java");
         assertThat(item.getPublishedAt()).isNotNull();
-        // 搜索成功后关键词记入热词（ZINCRBY + 滚动 1 天过期）
-        verify(zSetOps).incrementScore("search:hotwords", "java", 1);
-        verify(redis).expire(eq("search:hotwords"), eq(Duration.ofDays(1)));
+        // 搜索成功后关键词记入热词（由 HotwordService 负责累加与落库）
+        verify(hotwordService).record("java");
     }
 
     @Test
-    @DisplayName("热词统计 — Redis 异常被吞掉，不影响搜索主流程")
-    void search_redisFailure_swallows() {
+    @DisplayName("热词统计 — 异常被吞掉，不影响搜索主流程")
+    void search_hotwordFailure_swallows() {
         SearchHits<PostDocument> hits = mock(SearchHits.class);
         when(hits.getTotalHits()).thenReturn(0L);
         when(hits.getSearchHits()).thenReturn(List.of());
         when(operations.search(any(Query.class), eq(PostDocument.class))).thenReturn(hits);
-        when(redis.opsForZSet()).thenThrow(new RuntimeException("redis down"));
+        doThrow(new RuntimeException("hotword down")).when(hotwordService).record("java");
 
         PageVO<SearchVO> vo = searchService.search("java", 1, 10, null);
 
@@ -164,11 +158,9 @@ class SearchServiceImplTest {
     }
 
     @Test
-    @DisplayName("热词查询 — 按 ZSET 分数倒序返回 TopN")
-    void hotwords_returnsTopN() {
-        when(redis.opsForZSet()).thenReturn(zSetOps);
-        when(zSetOps.reverseRange("search:hotwords", 0, 9))
-                .thenReturn(new LinkedHashSet<>(List.of("java", "redis")));
+    @DisplayName("热词查询 — 委托 HotwordService 返回 TopN")
+    void hotwords_delegatesToHotwordService() {
+        when(hotwordService.topN(10)).thenReturn(List.of("java", "redis"));
 
         List<String> words = searchService.hotwords(10);
 

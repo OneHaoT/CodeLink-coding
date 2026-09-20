@@ -148,21 +148,21 @@ public class PostServiceImpl implements PostService {
                 .eq(Post::getId, id)
                 .setSql("view_count = view_count + 1"));
 
-        PostVO cached = postCacheService.getDetail(id);
-        if (cached != null) {
-            applyPersonalization(List.of(cached), currentUserId);
-            return cached;
-        }
-
-        Post post = postMapper.selectById(id);
-        if (post == null || post.getStatus() == null || post.getStatus() != 1) {
+        // 缓存三防护（穿透 / 击穿 / 雪崩）统一由 PostCacheService 处理；空值哨兵命中即代表文章不存在
+        PostVO vo = postCacheService.loadDetail(id, () -> {
+            Post post = postMapper.selectById(id);
+            if (post == null || post.getStatus() == null || post.getStatus() != 1) {
+                return null;
+            }
+            // 缓存"公共"副本：个性化字段清零后存储
+            PostVO publicCopy = objectMapper.convertValue(enrich(List.of(post), null, true).get(0), PostVO.class);
+            clearPersonalization(publicCopy);
+            return publicCopy;
+        });
+        if (vo == null) {
             throw new BusinessException(ErrorCode.POST_NOT_FOUND);
         }
-        PostVO vo = enrich(List.of(post), currentUserId, true).get(0);
-        // 缓存"公共"副本：个性化字段清零后存储
-        PostVO publicCopy = objectMapper.convertValue(vo, PostVO.class);
-        clearPersonalization(publicCopy);
-        postCacheService.putDetail(id, publicCopy);
+        applyPersonalization(List.of(vo), currentUserId);
         return vo;
     }
 
