@@ -27,10 +27,6 @@ codeknest:
   upload:
     image-path: ${IMAGE_PATH:./image}
 
-knife4j:
-  setting:
-    doc-name: CodeLink API
-
 logging:
   level:
     root: INFO

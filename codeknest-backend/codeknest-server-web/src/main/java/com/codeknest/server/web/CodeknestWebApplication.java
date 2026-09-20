@@ -33,7 +33,6 @@ public class CodeknestWebApplication {
                 
                 ===============================================
                 🚀  CodeLink Web API 启动成功
-                📚  Knife4j Docs: http://localhost:8080/api/doc.html
                 ===============================================
                 """);
     }

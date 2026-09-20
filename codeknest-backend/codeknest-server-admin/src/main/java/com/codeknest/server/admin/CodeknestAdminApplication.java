@@ -33,7 +33,6 @@ public class CodeknestAdminApplication {
                 
                 ===============================================
                 🛠️  CodeLink Admin API 启动成功
-                📚  Knife4j Docs: http://localhost:8081/api/doc.html
                 ===============================================
                 """);
     }

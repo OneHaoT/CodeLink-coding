@@ -15,10 +15,6 @@ spring:
   application:
     name: codeknest-server-admin
 
-knife4j:
-  setting:
-    doc-name: CodeLink Admin API
-
 logging:
   level:
     root: INFO

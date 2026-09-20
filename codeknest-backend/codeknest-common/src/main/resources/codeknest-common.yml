@@ -76,8 +76,3 @@ codeknest:
   upload:
     local-path: ${UPLOAD_PATH:./data/uploads}
     access-url-prefix: ${UPLOAD_URL_PREFIX:/api/files}
-
-knife4j:
-  enable: true
-  setting:
-    language: zh_cn

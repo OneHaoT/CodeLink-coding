@@ -21,7 +21,7 @@ import java.util.List;
 
 /**
  * Spring Security 全局配置
- * — 无状态 JWT 认证 + 放行登录/注册/Swagger + 跨域
+ * — 无状态 JWT 认证 + 公开路由放行 + 跨域
  * — 提供基础 SecurityFilterChain，业务启动模块可按需覆盖
  */
 @Configuration
@@ -57,12 +57,6 @@ public class SecurityConfig {
             "/users/*/follow/status",
             "/comments",
             "/search/**",
-            // Knife4j / OpenAPI
-            "/doc.html",
-            "/webjars/**",
-            "/v3/api-docs/**",
-            "/swagger-ui/**",
-            "/swagger-resources/**",
             "/favicon.ico",
             "/error",
             "/files/**",
