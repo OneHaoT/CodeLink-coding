@@ -30,6 +30,19 @@ spring:
     # MongoDB（两 starter 共享：草稿/登录日志；admin 侧连接闲置，见阶段5 spec D4）
     mongodb:
       uri: mongodb://${MONGO_USER}:${MONGO_PWD}@${MONGO_HOST:localhost}:${MONGO_PORT:27017}/codeknest?authSource=admin
+      # 启动时按文档类上的 @Indexed / @CompoundIndex 自动建索引（Spring Data 3.x 默认关闭）
+      # 集合与索引均幂等创建，是 MongoDB 侧「零手工初始化」的保证
+      auto-index-creation: true
+  # 部署自举：启动时自动建表 + 补种子数据（库本身由 DatabaseBootstrapPostProcessor 创建）
+  # 语义「缺失即补，已存在不动」—— 脚本每次启动都执行，故全部语句必须幂等
+  # 并发安全：CREATE TABLE IF NOT EXISTS 在 MySQL 元数据锁下天然幂等，无需额外加锁
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+      data-locations: classpath:db/data.sql
+      continue-on-error: false
+      encoding: UTF-8
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
