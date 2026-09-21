@@ -143,6 +143,8 @@ public class SearchServiceImpl implements SearchService {
         }
         List<PostDocument> docs = documentBuilder.buildAll(posts);
         operations.save(docs);
+        // 重建后立即刷新，使重建结果马上可被检索（否则需等默认 1s 刷新间隔）
+        indexOps.refresh();
         log.info("全量重建 ES 索引完成，写入文档数={}", docs.size());
         return docs.size();
     }
